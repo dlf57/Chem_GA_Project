@@ -30,6 +30,7 @@ import pickle
 
 ob = pybel.ob
 
+
 def make3D(mol):
     '''
     Makes the mol object from SMILES 3D
@@ -56,6 +57,7 @@ def make3D(mol):
     ff.ConjugateGradients(250, 1.0e-4)
 
     ff.GetCoordinates(mol.OBMol)
+
 
 def ecfp(polymer, smiles_list, poly_size, depth=2, size=4096):
     '''
@@ -92,6 +94,7 @@ def ecfp(polymer, smiles_list, poly_size, depth=2, size=4096):
 
     return rep
 
+
 def find_sequences(num_mono_species):
     '''
     Finds all possible sequences
@@ -114,6 +117,7 @@ def find_sequences(num_mono_species):
     numer_seqs = list(product(range(num_mono_species), repeat=seq_len))
 
     return numer_seqs
+
 
 def find_poly_mw(population, poly_size, smiles_list):
     '''
@@ -146,6 +150,7 @@ def find_poly_mw(population, poly_size, smiles_list):
 
     return poly_mw_list
 
+
 def make_file_name(polymer, poly_size):
     '''
     Makes file name for a given polymer
@@ -176,6 +181,7 @@ def make_file_name(polymer, poly_size):
 
     return file_name
 
+
 def run_geo_opt(polymer, poly_size, smiles_list):
     '''
     Runs geometry optimization calculation on given polymer
@@ -193,7 +199,7 @@ def run_geo_opt(polymer, poly_size, smiles_list):
     # make file name string w/ convention monoIdx1_monoIdx2_fullNumerSequence
     file_name = make_file_name(polymer, poly_size)
 
-    #if output file already exists, skip xTB
+    # if output file already exists, skip xTB
     exists = os.path.isfile('output/%s.out' % (file_name))
     if exists:
         print("output file existed")
@@ -210,10 +216,13 @@ def run_geo_opt(polymer, poly_size, smiles_list):
     mol.write('xyz', 'input/%s.xyz' % (file_name), overwrite=True)
 
     # run xTB geometry optimization
-    xtb = subprocess.call('(/ihome/ghutchison/geoffh/xtb/xtb input/%s.xyz --opt >output/%s.out)' % (file_name, file_name), shell=True)
+    xtb = subprocess.call('(/ihome/ghutchison/geoffh/xtb/xtb input/%s.xyz --opt >output/%s.out)' %
+                          (file_name, file_name), shell=True)
 
-    save_opt_file = subprocess.call('(cp xtbopt.xyz opt/%s_opt.xyz)' % (file_name), shell=True)
+    save_opt_file = subprocess.call(
+        '(cp xtbopt.xyz opt/%s_opt.xyz)' % (file_name), shell=True)
     del_restart = subprocess.call('(rm -f *restart)', shell=True)
+
 
 def find_elec_prop(population, poly_size, smiles_list, regr=None):
     '''
@@ -243,7 +252,7 @@ def find_elec_prop(population, poly_size, smiles_list, regr=None):
     poly_pred_polar_list = []
     poly_ecfp = []
 
-    #run xTB geometry optimization
+    # run xTB geometry optimization
     # nproc = 8
     for polymer in population:
         if regr != None:
@@ -264,7 +273,8 @@ def find_elec_prop(population, poly_size, smiles_list, regr=None):
         # check for xTB failures
         if 'FAILED!' in open('output/%s.out' % (file_name)).read():
             # move output file to 'failed' directory
-            move_fail_file = subprocess.call('(mv output/%s.out failed/%s.out)' % (file_name, file_name), shell=True)
+            move_fail_file = subprocess.call(
+                '(mv output/%s.out failed/%s.out)' % (file_name, file_name), shell=True)
 
             # note failure by filling property lists with dummy values
             poly_polar_list.append(-10)
@@ -291,9 +301,11 @@ def find_elec_prop(population, poly_size, smiles_list, regr=None):
             read_output.close()
 
     # make nested list of dipole moment and polarizability lists
-    elec_prop_lists = [poly_dipole_list, poly_polar_list, poly_pred_polar_list, poly_ecfp]
+    elec_prop_lists = [poly_dipole_list,
+                       poly_polar_list, poly_pred_polar_list, poly_ecfp]
 
     return elec_prop_lists
+
 
 def fitness_fn(opt_property, poly_property_list):
     '''
@@ -322,6 +334,7 @@ def fitness_fn(opt_property, poly_property_list):
         print("Error: opt_property not recognized. trace:fitness_fn")
 
     return ranked_indicies
+
 
 def parent_select(opt_property, population, poly_property_list):
     '''
@@ -354,6 +367,7 @@ def parent_select(opt_property, population, poly_property_list):
 
     return parent_list
 
+
 def mutate(polymer, sequence_list, smiles_list, mono_list):
     '''
     Creates point mutation in given polymer if polymer is selected for mutation
@@ -377,8 +391,8 @@ def mutate(polymer, sequence_list, smiles_list, mono_list):
     mut_rate = 0.4
 
     # determine whether to mutate based on mutation rate
-    rand = random.randint(1,10)
-    if rand <= (mut_rate*10):
+    rand = random.randint(1, 10)
+    if rand <= (mut_rate * 10):
         pass
     else:
         return polymer
@@ -399,6 +413,7 @@ def mutate(polymer, sequence_list, smiles_list, mono_list):
 
     return polymer
 
+
 def weighted_random_pick(mono_list):
     '''
     Selects random monomer based on weighted (frequency) system
@@ -417,7 +432,8 @@ def weighted_random_pick(mono_list):
     ordered_mono_list = deepcopy(mono_list)
 
     # sort based on frequencies, put in ASCENDING order (LOWEST first)
-    ordered_mono_list = sorted(ordered_mono_list, key = lambda monomer: monomer[1])
+    ordered_mono_list = sorted(
+        ordered_mono_list, key=lambda monomer: monomer[1])
 
     # calculate sum of all weights [frequencies]
     sum = 0
@@ -426,7 +442,7 @@ def weighted_random_pick(mono_list):
         sum += freq
 
     # generate random number from 0 to sum, lower endpoint included
-    rand_num = random.randint(0, sum-1)
+    rand_num = random.randint(0, sum - 1)
 
     # loop over list of sorted weights, subtract weights from random number until random number is less than next weight
     for idx in ordered_mono_list:
@@ -436,6 +452,7 @@ def weighted_random_pick(mono_list):
             return mono_idx
         else:
             rand_num -= freq
+
 
 def crossover_mutate(parent_list, pop_size, poly_size, num_mono_species, sequence_list, smiles_list, mono_list):
     '''
@@ -507,7 +524,7 @@ def crossover_mutate(parent_list, pop_size, poly_size, num_mono_species, sequenc
 
         temp_child_str = make_polymer_str(temp_child, smiles_list, poly_size)
 
-        #try to avoid duplicates in population, but prevent infinite loop if unique individual not found after so many attempts
+        # try to avoid duplicates in population, but prevent infinite loop if unique individual not found after so many attempts
         # TODO: fix possible duplication problem after mutation
         if temp_child_str in new_pop_str:
             pass
@@ -516,6 +533,7 @@ def crossover_mutate(parent_list, pop_size, poly_size, num_mono_species, sequenc
             new_pop_str.append(temp_child_str)
 
     return new_pop
+
 
 def sort_mono_indicies_list(mono_list):
     '''
@@ -535,7 +553,8 @@ def sort_mono_indicies_list(mono_list):
     ordered_mono_list = deepcopy(mono_list)
 
     # sort based on frequencies, put in descending order (highest first)
-    ordered_mono_list = sorted(ordered_mono_list, key = lambda monomer: monomer[1], reverse = True)
+    ordered_mono_list = sorted(
+        ordered_mono_list, key=lambda monomer: monomer[1], reverse=True)
 
     # make list of monomer indicies only (in order of descending frequency)
     mono_indicies = []
@@ -543,6 +562,7 @@ def sort_mono_indicies_list(mono_list):
         mono_indicies.append(ordered_mono_list[x][0])
 
     return mono_indicies
+
 
 def make_polymer_str(polymer, smiles_list, poly_size):
     '''
@@ -579,7 +599,7 @@ def make_polymer_str(polymer, smiles_list, poly_size):
         monomer_index = polymer[seq_monomer_index + 1]
         poly_string = poly_string + smiles_list[monomer_index]
 
-    #add nitro end group
+    # add nitro end group
     poly_string = poly_string + "N(=O)=O"
 
     return poly_string
@@ -600,7 +620,8 @@ def main():
 
     # Read in monomers from input file
     # read_file = open('../input_files/1235MonomerList.txt', 'r')
-    read_file = open('/ihome/ghutchison/dlf57/Chem_GA_Project/input_files/1235MonomerList.txt', 'r')
+    read_file = open(
+        '/ihome/ghutchison/dlf57/Chem_GA_Project/input_files/1235MonomerList.txt', 'r')
 
     # create list of monomer SMILES strings
     # assumes input file has one monomer per line
@@ -611,7 +632,7 @@ def main():
         smiles_list.append(temp)
     read_file.close()
 
-    #create monomer frequency list [(mono index 1, frequency), (mono index 2, frequency),...]
+    # create monomer frequency list [(mono index 1, frequency), (mono index 2, frequency),...]
     mono_list = []
     for x in range(len(smiles_list)):
         mono_list.append([x, 0])
@@ -651,7 +672,6 @@ def main():
             population_str.append(temp_poly_str)
             counter += 1
 
-
     # Load ML regressor
     with open('/ihome/ghutchison/dlf57/Chem_GA_Project/input_files/ecfp_polar_brr.pkl', 'rb') as regrfile:
         regr = pickle.load(regrfile)
@@ -666,16 +686,17 @@ def main():
         # Calculate polymer molecular weights
         poly_property_list = find_poly_mw(population, poly_size, smiles_list)
     elif opt_property == 'dip':
-        #initialize list of polarizabilities
+        # initialize list of polarizabilities
         polar_list = []
         # calculate electronic properties for each polymer
-        elec_prop_list = find_elec_prop(population, poly_size, smiles_list, regr=regr)
+        elec_prop_list = find_elec_prop(
+            population, poly_size, smiles_list, regr=regr)
         poly_property_list = elec_prop_list[0]
         polar_list = elec_prop_list[1]
         # pred_polar_list = elec_prop_list[2]
         # poly_ecfp_list = elec_prop_list[3]
     elif opt_property == 'pol':
-        #initialize list of dipole moments
+        # initialize list of dipole moments
         dip_list = []
         # calculate electronic properties for each polymer
         elec_prop_list = find_elec_prop(population, poly_size, smiles_list)
@@ -698,11 +719,13 @@ def main():
     avg_test = mean(poly_property_list)
 
     if opt_property == 'dip':
-        compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
+        compound = make_file_name(
+            population[poly_property_list.index(max_test)], poly_size)
         polar_val = polar_list[poly_property_list.index(max_test)]
 
     if opt_property == 'pol':
-        compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
+        compound = make_file_name(
+            population[poly_property_list.index(max_test)], poly_size)
         dip_val = dip_list[poly_property_list.index(max_test)]
 
     # create new output files
@@ -727,12 +750,14 @@ def main():
         polar_dip_file.write('compound, gen, polar, dip \n')
     spear_file.write('gen, spear_05, spear_10, spear_15 \n')
 
-    #capture initial population data
+    # capture initial population data
     analysis_file.write('%f, %f, %f, n/a, \n' % (min_test, max_test, avg_test))
     if opt_property == 'dip':
-        dip_polar_file.write('%s, %d, %f, %f, \n' % (compound, 1, max_test, polar_val))
+        dip_polar_file.write('%s, %d, %f, %f, \n' %
+                             (compound, 1, max_test, polar_val))
     if opt_property == 'pol':
-        polar_dip_file.write('%s, %d, %f, %f, \n' % (compound, 1, max_test, dip_val))
+        polar_dip_file.write('%s, %d, %f, %f, \n' %
+                             (compound, 1, max_test, dip_val))
     spear_file.write('1, n/a, n/a, n/a, \n')
 
     # write polymer population to file
@@ -775,11 +800,10 @@ def main():
 
     # check for convergence among top 30% (or top 8, whichever is larger) candidates between 5 generations
     perc = 0.1
-    n = int(mono_list_size*perc)
-    n_05 = int(mono_list_size*.05)
-    n_10 = int(mono_list_size*.10)
-    n_15 = int(mono_list_size*.15)
-
+    n = int(mono_list_size * perc)
+    n_05 = int(mono_list_size * .05)
+    n_10 = int(mono_list_size * .10)
+    n_15 = int(mono_list_size * .15)
 
     # initialize generation counter
     gen_counter = 1
@@ -788,7 +812,7 @@ def main():
     spear_counter = 0
     prop_value_counter = 0
 
-    #while spear_counter < 10 or prop_value_counter < 10:
+    # while spear_counter < 10 or prop_value_counter < 10:
     for x in range(5):
         # open output files
         analysis_file = open('gens_analysis.txt', 'a+')
@@ -801,7 +825,6 @@ def main():
             polar_dip_file = open('gens_polar_dip.txt', 'a+')
         spear_file = open('gens_spear.txt', 'a+')
 
-
         gen_counter += 1
 
         max_init = max(poly_property_list)
@@ -810,16 +833,20 @@ def main():
         gen1 = sort_mono_indicies_list(mono_list)
 
         # Selection - select heaviest (best) 50% of polymers as parents
-        population = parent_select(opt_property, population, poly_property_list)
+        population = parent_select(
+            opt_property, population, poly_property_list)
 
         # Crossover & Mutation - create children to repopulate bottom 50% of polymers in population
-        population = crossover_mutate(population, pop_size, poly_size, num_mono_species, sequence_list, smiles_list, mono_list)
+        population = crossover_mutate(
+            population, pop_size, poly_size, num_mono_species, sequence_list, smiles_list, mono_list)
 
         # calculate desired polymer property
         if opt_property == "mw":
-            poly_property_list = find_poly_mw(population, poly_size, smiles_list)
+            poly_property_list = find_poly_mw(
+                population, poly_size, smiles_list)
         elif opt_property == "dip":
-            elec_prop_list = find_elec_prop(population, poly_size, smiles_list, regr=regr)
+            elec_prop_list = find_elec_prop(
+                population, poly_size, smiles_list, regr=regr)
             poly_property_list = elec_prop_list[0]
             polar_list = elec_prop_list[1]
             pred_polar_list = elec_prop_list[2]
@@ -847,11 +874,13 @@ def main():
         avg_test = mean(poly_property_list)
 
         if opt_property == 'dip':
-            compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
+            compound = make_file_name(
+                population[poly_property_list.index(max_test)], poly_size)
             polar_val = polar_list[poly_property_list.index(max_test)]
 
         if opt_property == 'pol':
-            compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
+            compound = make_file_name(
+                population[poly_property_list.index(max_test)], poly_size)
             dip_val = dip_list[poly_property_list.index(max_test)]
 
         # create sorted monomer list with most freq first
@@ -860,18 +889,21 @@ def main():
         # calculate Spearman correlation coefficient for begin and end sorted monomer lists
         spear = stats.spearmanr(gen1[:n], gen2[:n])[0]
 
-        spear_05= stats.spearmanr(gen1[:n_05], gen2[:n_05])[0]
+        spear_05 = stats.spearmanr(gen1[:n_05], gen2[:n_05])[0]
         spear_10 = stats.spearmanr(gen1[:n_10], gen2[:n_10])[0]
         spear_15 = stats.spearmanr(gen1[:n_15], gen2[:n_15])[0]
 
         # capture monomer indexes and numerical sequence as strings for population file
-        analysis_file.write('%f, %f, %f, %f, \n' % (min_test, max_test, avg_test, spear))
+        analysis_file.write('%f, %f, %f, %f, \n' %
+                            (min_test, max_test, avg_test, spear))
         if opt_property == 'dip':
-            dip_polar_file.write('%s, %d, %f, %f, \n' % (compound, gen_counter, max_test, polar_val))
+            dip_polar_file.write('%s, %d, %f, %f, \n' %
+                                 (compound, gen_counter, max_test, polar_val))
         if opt_property == 'pol':
-            polar_dip_file.write('%s, %d, %f, %f, \n' % (compound, gen_counter, max_test, dip_val))
-        spear_file.write('%d, %f, %f, %f, \n' % (gen_counter, spear_05, spear_10, spear_15))
-
+            polar_dip_file.write('%s, %d, %f, %f, \n' %
+                                 (compound, gen_counter, max_test, dip_val))
+        spear_file.write('%d, %f, %f, %f, \n' %
+                         (gen_counter, spear_05, spear_10, spear_15))
 
         # write polymer population to file
         for polymer in population:
@@ -894,7 +926,7 @@ def main():
             spear_counter = 0
 
         # keep track of number of successive generations meeting property value convergence criterion
-        if max_test >= (max_init - max_init*0.05) and max_test <= (max_init + max_init*0.05):
+        if max_test >= (max_init - max_init * 0.05) and max_test <= (max_init + max_init * 0.05):
             prop_value_counter += 1
         else:
             prop_value_counter = 0
@@ -921,9 +953,8 @@ def main():
             shutil.copy('gens_polar_dip.txt', 'gens_polar_dip_copy.txt')
         shutil.copy('gens_spear.txt', 'gens_spear_copy.txt')
 
-    #remove unnecessary copies
+    # remove unnecessary copies
     del_copies = subprocess.call('(rm -f *_copy.txt)', shell=True)
-
 
 
 if __name__ == '__main__':
