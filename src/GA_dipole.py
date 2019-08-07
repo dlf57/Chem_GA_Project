@@ -19,6 +19,14 @@ from copy import deepcopy
 import shlex
 import pandas as pd
 #import forkmap
+# from fork import fork
+
+# ML dependencies
+from sklearn.linear_model import BayesianRidge
+from modAL.models import ActiveLearner
+import oddt
+from oddt.fingerprints import ECFP
+import pickle
 
 ob = pybel.ob
 
@@ -48,8 +56,42 @@ def make3D(mol):
     ff.ConjugateGradients(250, 1.0e-4)
 
     ff.GetCoordinates(mol.OBMol)
-    
-    
+
+def ecfp(polymer, smiles_list, poly_size, depth=2, size=4096):
+    '''
+    Create ECFP representation
+
+    Parameters
+    ----------
+    polymer: list (specific format)
+        [(#,#,#,#), A, B]
+    poly_size: int
+        number of monomers per polymer
+    smiles_list: list
+        list of all possible monomer SMILES
+    depth: int
+        depth of the fingerprint (eg. 2 is ECFP4)
+    size: int
+        size of representation
+
+    Returns
+    -------
+    rep: list
+        ECFP representation for that molecule
+    '''
+    # make polymer into SMILES string
+    poly_smiles = make_polymer_str(polymer, smiles_list, poly_size)
+
+    mol = oddt.toolkit.readstring("smi", poly_smiles)
+    fp = ECFP(mol, depth=depth, size=size, sparse=False)
+    fpl = list(fp)
+
+    rep = []
+    for i in range(len(fpl)):
+        rep.append(fpl[i])
+
+    return rep
+
 def find_sequences(num_mono_species):
     '''
     Finds all possible sequences
@@ -150,13 +192,13 @@ def run_geo_opt(polymer, poly_size, smiles_list):
     '''
     # make file name string w/ convention monoIdx1_monoIdx2_fullNumerSequence
     file_name = make_file_name(polymer, poly_size)
-    
+
     #if output file already exists, skip xTB
     exists = os.path.isfile('output/%s.out' % (file_name))
     if exists:
         print("output file existed")
         return
-            
+
     # make polymer into SMILES string
     poly_smiles = make_polymer_str(polymer, smiles_list, poly_size)
 
@@ -173,7 +215,7 @@ def run_geo_opt(polymer, poly_size, smiles_list):
     save_opt_file = subprocess.call('(cp xtbopt.xyz opt/%s_opt.xyz)' % (file_name), shell=True)
     del_restart = subprocess.call('(rm -f *restart)', shell=True)
 
-def find_elec_prop(population, poly_size, smiles_list):
+def find_elec_prop(population, poly_size, smiles_list, regr=None):
     '''
     Calculates dipole moment and polarizability of each polymer in population
     TODO: add dipole tensor functionality
@@ -187,6 +229,8 @@ def find_elec_prop(population, poly_size, smiles_list):
         number of monomers per polymer
     smiles_list: list
         list of all possible monomer SMILES
+    regr: object
+        trained ML regressor
 
     Returns
     -------
@@ -196,18 +240,27 @@ def find_elec_prop(population, poly_size, smiles_list):
 
     poly_polar_list = []
     poly_dipole_list = []
-    
+    poly_pred_polar_list = []
+    poly_ecfp = []
+
     #run xTB geometry optimization
-    #nproc = 8
+    # nproc = 8
     for polymer in population:
+        if regr != None:
+            rep = ecfp(polymer, poly_size, smiles_list)
+            pred_polar = regr.predict(rep)
+            poly_pred_polar_list.append(pred_polar)
+            poly_ecfp.append(rep)
+
         #forkmap.map(run_geo_opt, polymer, poly_size, smiles_list, n=nproc)
         run_geo_opt(polymer, poly_size, smiles_list)
+        # fork(run_geo_opt, polymer, poly_size, smiles_list, n=nproc)
 
     # parse xTB output files
-    for polymer in population:   
+    for polymer in population:
          # make file name string w/ convention monoIdx1_monoIdx2_fullNumerSequence
         file_name = make_file_name(polymer, poly_size)
-        
+
         # check for xTB failures
         if 'FAILED!' in open('output/%s.out' % (file_name)).read():
             # move output file to 'failed' directory
@@ -238,7 +291,7 @@ def find_elec_prop(population, poly_size, smiles_list):
             read_output.close()
 
     # make nested list of dipole moment and polarizability lists
-    elec_prop_lists = [poly_dipole_list, poly_polar_list]
+    elec_prop_lists = [poly_dipole_list, poly_polar_list, poly_pred_polar_list, poly_ecfp]
 
     return elec_prop_lists
 
@@ -534,7 +587,7 @@ def make_polymer_str(polymer, smiles_list, poly_size):
 
 def main():
     # number of polymers in population
-    pop_size = 32
+    pop_size = 6
     # number of monomers per polymer
     poly_size = 6
     # number of species of monomers in each polymer
@@ -547,7 +600,7 @@ def main():
 
     # Read in monomers from input file
     # read_file = open('../input_files/1235MonomerList.txt', 'r')
-    read_file = open('/ihome/ghutchison/dch45/Chem_GA_Project/input_files/1235MonomerList.txt', 'r')
+    read_file = open('/ihome/ghutchison/dlf57/Chem_GA_Project/input_files/1235MonomerList.txt', 'r')
 
     # create list of monomer SMILES strings
     # assumes input file has one monomer per line
@@ -599,6 +652,10 @@ def main():
             counter += 1
 
 
+    # Load ML regressor
+    with open('/ihome/ghutchison/dlf57/Chem_GA_Project/input_files/ecfp_polar_brr.pkl', 'rb') as regrfile:
+        regr = pickle.load(regrfile)
+
     # find initial population properties
     if opt_property == 'mw':
         # calculate MW for each monomer
@@ -612,9 +669,11 @@ def main():
         #initialize list of polarizabilities
         polar_list = []
         # calculate electronic properties for each polymer
-        elec_prop_list = find_elec_prop(population, poly_size, smiles_list)
+        elec_prop_list = find_elec_prop(population, poly_size, smiles_list, regr=regr)
         poly_property_list = elec_prop_list[0]
         polar_list = elec_prop_list[1]
+        # pred_polar_list = elec_prop_list[2]
+        # poly_ecfp_list = elec_prop_list[3]
     elif opt_property == 'pol':
         #initialize list of dipole moments
         dip_list = []
@@ -622,11 +681,16 @@ def main():
         elec_prop_list = find_elec_prop(population, poly_size, smiles_list)
         poly_property_list = elec_prop_list[1]
         dip_list = elec_prop_list[0]
-        
+        pred_polar_list = elec_prop_list[2]
+        poly_ecfp_list = elec_prop_list[3]
+
     else:
         print("Error: opt_property not recognized. trace:main:initial pop properties")
 
-
+    # Update the ML w/ new polymers
+    X_update = np.asarray(poly_ecfp_list)
+    y_update = np.asarray(pred_polar_list)
+    regr.teach(X_update, y_update)
 
     # set initial values for min, max, and avg polymer weights
     min_test = min(poly_property_list)
@@ -636,7 +700,7 @@ def main():
     if opt_property == 'dip':
         compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
         polar_val = polar_list[poly_property_list.index(max_test)]
-        
+
     if opt_property == 'pol':
         compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
         dip_val = dip_list[poly_property_list.index(max_test)]
@@ -645,6 +709,7 @@ def main():
     analysis_file = open('gens_analysis.txt', 'w+')
     population_file = open('gens_population.txt', 'w+')
     values_file = open('gens_values.txt', 'w+')
+    pred_file = open('gens_pred.txt', 'w+')
     if opt_property == 'dip':
         dip_polar_file = open('gens_dip_polar.txt', 'w+')
     if opt_property == 'pol':
@@ -655,6 +720,7 @@ def main():
     analysis_file.write('min, max, avg, spearman, \n')
     population_file.write('polymer populations \n')
     values_file.write('%s values \n' % (opt_property))
+    pred_file.write('%s values \n' % (opt_property))
     if opt_property == 'dip':
         dip_polar_file.write('compound, gen, dipole, polar \n')
     if opt_property == 'pol':
@@ -678,21 +744,27 @@ def main():
     for value in poly_property_list:
         values_file.write('%f, ' % (value))
     values_file.write('\n')
-    
+
+    for prediction in pred_polar_list:
+        pred_file.write('%f, ' % (prediction))
+    pred_file.write('\n')
+
     # close all output files
     analysis_file.close()
     population_file.close()
     values_file.close()
+    pred_file.close()
     if opt_property == 'dip':
         dip_polar_file.close()
     if opt_property == 'pol':
         polar_dip_file.close()
     spear_file.close()
-    
+
     # make backup copies of output files
     shutil.copy('gens_analysis.txt', 'gens_analysis_copy.txt')
     shutil.copy('gens_population.txt', 'gens_population_copy.txt')
     shutil.copy('gens_values.txt', 'gens_values_copy.txt')
+    shutil.copy('gens_pred.txt', 'gens_pred_copy.txt')
     if opt_property == 'dip':
         shutil.copy('gens_dip_polar.txt', 'gens_dip_polar_copy.txt')
     if opt_property == 'pol':
@@ -717,20 +789,21 @@ def main():
     prop_value_counter = 0
 
     #while spear_counter < 10 or prop_value_counter < 10:
-    for x in range(100):
+    for x in range(5):
         # open output files
         analysis_file = open('gens_analysis.txt', 'a+')
         population_file = open('gens_population.txt', 'a+')
         values_file = open('gens_values.txt', 'a+')
+        pred_file = open('gens_pred.txt', 'a+')
         if opt_property == 'dip':
             dip_polar_file = open('gens_dip_polar.txt', 'a+')
         if opt_property == 'pol':
             polar_dip_file = open('gens_polar_dip.txt', 'a+')
         spear_file = open('gens_spear.txt', 'a+')
-        
-        
+
+
         gen_counter += 1
-        
+
         max_init = max(poly_property_list)
 
         # create sorted monomer list with most freq first
@@ -746,15 +819,27 @@ def main():
         if opt_property == "mw":
             poly_property_list = find_poly_mw(population, poly_size, smiles_list)
         elif opt_property == "dip":
-            elec_prop_list = find_elec_prop(population, poly_size, smiles_list)
+            elec_prop_list = find_elec_prop(population, poly_size, smiles_list, regr=regr)
             poly_property_list = elec_prop_list[0]
             polar_list = elec_prop_list[1]
+            pred_polar_list = elec_prop_list[2]
+            poly_ecfp_list = elec_prop_list[3]
         elif opt_property == 'pol':
             elec_prop_list = find_elec_prop(population, poly_size, smiles_list)
             poly_property_list = elec_prop_list[1]
             dip_list = elec_prop_list[0]
+            pred_polar_list = elec_prop_list[2]
+            poly_ecfp_list = elec_prop_list[3]
         else:
             print("Error: opt_property not recognized. trace:main:loop pop properties")
+
+        # Update the ML w/ new polymers
+        X_update = np.asarray(poly_ecfp_list)
+        y_update = np.asarray(pred_polar_list)
+        regr.teach(X_update, y_update)
+
+        with open('/ihome/ghutchison/dlf57/Chem_GA_Project/input_files/ecfp_polar_brr_updated.pkl', 'wb') as regrfile:
+            pickle.dump(regr, regrfile)
 
         # record representative generation properties
         min_test = min(poly_property_list)
@@ -764,7 +849,7 @@ def main():
         if opt_property == 'dip':
             compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
             polar_val = polar_list[poly_property_list.index(max_test)]
-            
+
         if opt_property == 'pol':
             compound = make_file_name(population[poly_property_list.index(max_test)], poly_size)
             dip_val = dip_list[poly_property_list.index(max_test)]
@@ -798,32 +883,38 @@ def main():
             values_file.write('%f, ' % (value))
         values_file.write('\n')
 
+        for prediction in pred_polar_list:
+            pred_file.write('%f, ' % (prediction))
+        pred_file.write('\n')
+
         # keep track of number of successive generations meeting Spearman criterion
         if spear > 0.92:
             spear_counter += 1
         else:
             spear_counter = 0
-            
+
         # keep track of number of successive generations meeting property value convergence criterion
         if max_test >= (max_init - max_init*0.05) and max_test <= (max_init + max_init*0.05):
             prop_value_counter += 1
         else:
             prop_value_counter = 0
-            
+
         # close all output files
         analysis_file.close()
         population_file.close()
         values_file.close()
+        pred_file.close()
         if opt_property == 'dip':
             dip_polar_file.close()
         if opt_property == 'pol':
             polar_dip_file.close()
         spear_file.close()
-        
+
         # make backup copies of output files
         shutil.copy('gens_analysis.txt', 'gens_analysis_copy.txt')
         shutil.copy('gens_population.txt', 'gens_population_copy.txt')
         shutil.copy('gens_values.txt', 'gens_values_copy.txt')
+        shutil.copy('gens_pred.txt', 'gens_pred_copy.txt')
         if opt_property == 'dip':
             shutil.copy('gens_dip_polar.txt', 'gens_dip_polar_copy.txt')
         if opt_property == 'pol':
